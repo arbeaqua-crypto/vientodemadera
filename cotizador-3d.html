@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurador 3D — Viento de Madera</title>
+    <meta name="description" content="Configura tu mueble industrial a medida en 3D. Visualiza el resultado en un entorno realista antes de pedir presupuesto.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=1.0">
+    <style>
+        body { background: var(--color-blanco-roto); }
+        .site-header { position: relative; }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="site-header">
+        <div class="container header-inner">
+            <a href="index.html" class="brand">
+                <span class="brand-name">Viento de Madera</span>
+                <span class="brand-tagline">Muebles industriales · Artesanía a medida</span>
+            </a>
+            <nav class="main-nav">
+                <a href="index.html#colecciones">Colecciones</a>
+                <a href="index.html#contacto" class="nav-cta">Contacto</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- COTIZADOR 3D -->
+    <main class="cotizador-layout">
+
+        <!-- Canvas 3D -->
+        <div class="cotizador-3d-canvas" id="canvas3d"></div>
+
+        <!-- Panel de configuración -->
+        <aside class="cotizador-panel">
+            <span class="eyebrow">Configurador a medida</span>
+            <h2 id="modeloNombre">Mesa Roble</h2>
+            <p class="modelo-actual" id="modeloCategoria">Mesas de comedor</p>
+
+            <!-- Medidas -->
+            <div class="cotizador-grupo">
+                <h3>Medidas (cm)</h3>
+                <div class="cotizador-medida">
+                    <label for="medLargo">Largo</label>
+                    <input type="number" id="medLargo" min="60" max="360" step="5" value="200">
+                </div>
+                <div class="cotizador-medida">
+                    <label for="medAncho">Ancho / Fondo</label>
+                    <input type="number" id="medAncho" min="30" max="120" step="5" value="90">
+                </div>
+                <div class="cotizador-medida">
+                    <label for="medAlto">Alto</label>
+                    <input type="number" id="medAlto" min="35" max="260" step="5" value="75">
+                </div>
+            </div>
+
+            <!-- Materiales -->
+            <div class="cotizador-grupo">
+                <h3>Madera</h3>
+                <div class="cotizador-medida" style="grid-template-columns:1fr;">
+                    <select id="selMadera" style="padding:0.6rem; border:1px solid var(--color-borde); background:var(--color-blanco-roto); font:inherit;">
+                        <option value="roble">Roble macizo (claro)</option>
+                        <option value="nogal">Nogal europeo (oscuro)</option>
+                        <option value="pino">Pino antiguo (medio)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="cotizador-grupo">
+                <h3>Acabado de la estructura</h3>
+                <div class="cotizador-medida" style="grid-template-columns:1fr;">
+                    <select id="selAcero" style="padding:0.6rem; border:1px solid var(--color-borde); background:var(--color-blanco-roto); font:inherit;">
+                        <option value="negro">Negro mate (estándar)</option>
+                        <option value="negro-brillo">Negro brillo</option>
+                        <option value="oxido">Acero oxidado / corten</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Acciones -->
+            <div class="cotizador-grupo" style="border-bottom:none;">
+                <a href="#" id="btnPresupuesto" class="btn btn-primary" style="width:100%; text-align:center;">Pedir presupuesto</a>
+                <a href="index.html#colecciones" class="btn btn-ghost" style="width:100%; text-align:center; margin-top:0.6rem;">Volver a colecciones</a>
+            </div>
+
+            <p style="font-size:0.78rem; color:var(--color-texto-suave); text-align:center; margin-top:1.5rem;">
+                Versión preliminar del configurador.<br>
+                Próximamente: más detalles de tirantes, baldas y cajones.
+            </p>
+        </aside>
+    </main>
+
+    <!-- Three.js como módulo ES desde CDN -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/cotizador-3d.js?v=1.0"></script>
+
+    <script>
+        // Lectura del parámetro ?modelo=...
+        const params = new URLSearchParams(window.location.search);
+        const modeloId = params.get('modelo') || 'mesa-roble';
+
+        const MODELOS_INFO = {
+            'mesa-roble':         { nombre: 'Mesa Roble',                categoria: 'Mesas de comedor',          medidas: [200, 90, 75], madera: 'roble' },
+            'mesa-nogal':         { nombre: 'Mesa Nogal',                categoria: 'Mesas de comedor',          medidas: [220, 95, 75], madera: 'nogal' },
+            'mesa-pino':          { nombre: 'Mesa Pino Antiguo',         categoria: 'Mesas de comedor',          medidas: [240, 100, 75], madera: 'pino' },
+            'estanteria-loft':    { nombre: 'Estantería Loft',           categoria: 'Estanterías',               medidas: [120, 35, 200], madera: 'roble' },
+            'mueble-atelier':     { nombre: 'Mueble Atelier',            categoria: 'Estanterías',               medidas: [180, 40, 80],  madera: 'nogal' },
+            'estanteria-pared':   { nombre: 'Estantería Pared Studio',   categoria: 'Estanterías',               medidas: [120, 25, 30],  madera: 'roble' },
+            'mesita-lumen':       { nombre: 'Mesita de noche Lumen',     categoria: 'Mesitas auxiliares',        medidas: [45, 40, 55],   madera: 'roble' },
+            'mesa-centro-forge':  { nombre: 'Mesa de centro Forge',      categoria: 'Mesitas auxiliares',        medidas: [120, 60, 40],  madera: 'roble' },
+            'mesa-centro-round':  { nombre: 'Mesa de centro Round',      categoria: 'Mesitas auxiliares',        medidas: [80, 80, 42],   madera: 'nogal' }
+        };
+
+        const info = MODELOS_INFO[modeloId] || MODELOS_INFO['mesa-roble'];
+        document.getElementById('modeloNombre').textContent = info.nombre;
+        document.getElementById('modeloCategoria').textContent = info.categoria;
+        document.getElementById('medLargo').value = info.medidas[0];
+        document.getElementById('medAncho').value = info.medidas[1];
+        document.getElementById('medAlto').value  = info.medidas[2];
+        document.getElementById('selMadera').value = info.madera;
+
+        // Pasar info al script 3D vía window
+        window.__MODELO_INICIAL = { id: modeloId, ...info };
+
+        // Botón presupuesto: redirige a contacto con el modelo y medidas
+        document.getElementById('btnPresupuesto').addEventListener('click', function (e) {
+            e.preventDefault();
+            const L = document.getElementById('medLargo').value;
+            const A = document.getElementById('medAncho').value;
+            const H = document.getElementById('medAlto').value;
+            const mad = document.getElementById('selMadera').selectedOptions[0].text;
+            const ace = document.getElementById('selAcero').selectedOptions[0].text;
+            const params = new URLSearchParams({
+                modelo: info.nombre,
+                medidas: `${L} x ${A} x ${H} cm`,
+                madera: mad,
+                acabado: ace
+            });
+            window.location.href = 'index.html?' + params.toString() + '#contacto';
+        });
+    </script>
+</body>
+</html>
