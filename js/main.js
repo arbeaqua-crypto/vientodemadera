@@ -8,6 +8,37 @@ document.addEventListener('DOMContentLoaded', function () {
     const yearEl = document.getElementById('year');
     if (yearEl) yearEl.textContent = new Date().getFullYear();
 
+    // Prerrellenar formulario si llegamos del configurador 3D
+    const qp = new URLSearchParams(window.location.search);
+    if (qp.get('modelo')) {
+        const modelo = qp.get('modelo') || '';
+        const medidas = qp.get('medidas') || '';
+        const madera = qp.get('madera') || '';
+        const acabado = qp.get('acabado') || '';
+        const tipoSel = document.querySelector('#contactForm select[name="tipo"]');
+        if (tipoSel) {
+            // Intento mapear el modelo a una categoría del select
+            const m = modelo.toLowerCase();
+            let opcion = '';
+            if (m.includes('mesa de centro') || m.includes('mesita')) opcion = m.includes('mesita') ? 'Mesita de noche' : 'Mesa de centro';
+            else if (m.includes('mesa')) opcion = 'Mesa de comedor';
+            else if (m.includes('estanter') || m.includes('mueble')) opcion = 'Estantería / mueble de estantes';
+            if (opcion) {
+                Array.from(tipoSel.options).forEach(o => { if (o.text === opcion) o.selected = true; });
+            }
+        }
+        const textarea = document.querySelector('#contactForm textarea[name="mensaje"]');
+        if (textarea) {
+            textarea.value =
+                'Hola, vengo del configurador 3D y me interesa esta configuración:\n\n' +
+                '· Modelo: ' + modelo + '\n' +
+                '· Medidas: ' + medidas + '\n' +
+                '· Madera: ' + madera + '\n' +
+                '· Acabado: ' + acabado + '\n\n' +
+                'Por favor, enviadme presupuesto y plazo. Gracias.';
+        }
+    }
+
     // Formulario de contacto (envío básico — pendiente de backend)
     const form = document.getElementById('contactForm');
     if (form) {

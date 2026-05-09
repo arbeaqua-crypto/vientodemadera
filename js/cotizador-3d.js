@@ -26,6 +26,7 @@ const state = {
     altoCm: 75,
     madera: 'roble',
     acero: 'negro',
+    tipo: 'mesa',
     grupoMueble: null
 };
 
@@ -35,15 +36,15 @@ const container = document.getElementById('canvas3d');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf5f1ea);
 
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-camera.position.set(3.5, 1.8, 4);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+camera.position.set(2.8, 1.5, 3.2);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
 
@@ -169,6 +170,57 @@ function crearSalon() {
     lampLight.position.set(-3, 1.75, -2.5);
     grupoSalon.add(lampLight);
 
+    // Alfombra suave bajo el mueble (rectangular, gris cálido)
+    const alfombra = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 2.4),
+        new THREE.MeshStandardMaterial({ color: 0x8a7e6f, roughness: 0.95 })
+    );
+    alfombra.rotation.x = -Math.PI / 2;
+    alfombra.position.y = 0.005;
+    alfombra.receiveShadow = true;
+    grupoSalon.add(alfombra);
+
+    // Borde más oscuro de la alfombra (efecto cenefa)
+    const cenefa = new THREE.Mesh(
+        new THREE.RingGeometry(1.5, 1.7, 32, 1),
+        new THREE.MeshStandardMaterial({ color: 0x5a4f43, roughness: 0.95, side: THREE.DoubleSide })
+    );
+    cenefa.rotation.x = -Math.PI / 2;
+    cenefa.position.y = 0.008;
+    cenefa.scale.set(1, 0.7, 1);
+    grupoSalon.add(cenefa);
+
+    // Planta minimalista en una esquina (maceta + tronco + hojas esféricas)
+    const planta = new THREE.Group();
+    const maceta = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.14, 0.32, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 })
+    );
+    maceta.position.y = 0.16;
+    maceta.castShadow = true;
+    planta.add(maceta);
+    const tronco = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.03, 0.7, 12),
+        new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.8 })
+    );
+    tronco.position.y = 0.32 + 0.35;
+    planta.add(tronco);
+    const matHoja = new THREE.MeshStandardMaterial({ color: 0x4a6240, roughness: 0.85 });
+    [
+        [0,    0.95, 0,    0.32],
+        [0.18, 0.85, 0.05, 0.22],
+        [-0.15,0.78, 0.10, 0.20],
+        [0.05, 0.75, -0.18,0.24],
+        [-0.05,1.05, -0.05,0.22]
+    ].forEach(([x, y, z, r]) => {
+        const h = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), matHoja);
+        h.position.set(x, 0.32 + y, z);
+        h.castShadow = true;
+        planta.add(h);
+    });
+    planta.position.set(2.7, 0, -2.7);
+    grupoSalon.add(planta);
+
     return grupoSalon;
 }
 
@@ -219,7 +271,287 @@ function generarTexturaTarima() {
 
 scene.add(crearSalon());
 
-// -------- Mueble paramétrico (mesa con 4 patas) --------
+// -------- Mapa modelo → tipo de mueble --------
+const TIPO_POR_MODELO = {
+    'mesa-roble':         'mesa',
+    'mesa-nogal':         'mesa',
+    'mesa-pino':          'mesa',
+    'estanteria-loft':    'estanteria-pie',
+    'mueble-atelier':     'mueble-bajo',
+    'estanteria-pared':   'estanteria-pared',
+    'mesita-lumen':       'mesita-cajon',
+    'mesa-centro-forge':  'mesa-centro',
+    'mesa-centro-round':  'mesa-centro-redonda'
+};
+
+// -------- Helpers de materiales --------
+function getMatMadera() {
+    const m = COLORES_MADERA[state.madera] || COLORES_MADERA.roble;
+    return new THREE.MeshStandardMaterial({ color: m.color, roughness: m.rough, metalness: 0.0 });
+}
+function getMatAcero() {
+    const m = COLORES_ACERO[state.acero] || COLORES_ACERO.negro;
+    return new THREE.MeshStandardMaterial({ color: m.color, roughness: m.rough, metalness: m.metal });
+}
+function meshSombras(geo, mat) {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    return m;
+}
+
+// -------- Constructores por tipo --------
+function construirMesa(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorTablero = 0.05;
+    const seccionPata = 0.04;
+    const retranqueo = 0.05;
+    const alturaPata = H - grosorTablero;
+
+    // Tablero
+    const tab = meshSombras(new THREE.BoxGeometry(L, grosorTablero, A), matMad);
+    tab.position.y = H - grosorTablero / 2;
+    grupo.add(tab);
+
+    // 4 patas en esquinas
+    const pataGeo = new THREE.BoxGeometry(seccionPata, alturaPata, seccionPata);
+    [
+        [ L/2 - retranqueo - seccionPata/2,  alturaPata/2,  A/2 - retranqueo - seccionPata/2],
+        [-L/2 + retranqueo + seccionPata/2,  alturaPata/2,  A/2 - retranqueo - seccionPata/2],
+        [ L/2 - retranqueo - seccionPata/2,  alturaPata/2, -A/2 + retranqueo + seccionPata/2],
+        [-L/2 + retranqueo + seccionPata/2,  alturaPata/2, -A/2 + retranqueo + seccionPata/2]
+    ].forEach(([x, y, z]) => {
+        const p = meshSombras(pataGeo, matAce);
+        p.position.set(x, y, z);
+        grupo.add(p);
+    });
+
+    // Tirantes inferiores paralelos al largo
+    if (L > 0.7 && A > 0.4) {
+        const tg = new THREE.BoxGeometry(L - 2 * (retranqueo + seccionPata), 0.02, 0.02);
+        const t1 = meshSombras(tg, matAce);
+        t1.position.set(0, 0.08, A/2 - retranqueo - seccionPata/2);
+        grupo.add(t1);
+        const t2 = meshSombras(tg, matAce);
+        t2.position.set(0, 0.08, -A/2 + retranqueo + seccionPata/2);
+        grupo.add(t2);
+    }
+    return grupo;
+}
+
+function construirEstanteriaPie(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorBalda = 0.04;
+    const seccionMontante = 0.03;
+
+    // 4 montantes verticales (esquinas)
+    const montGeo = new THREE.BoxGeometry(seccionMontante, H, seccionMontante);
+    [
+        [ L/2 - seccionMontante/2,  H/2,  A/2 - seccionMontante/2],
+        [-L/2 + seccionMontante/2,  H/2,  A/2 - seccionMontante/2],
+        [ L/2 - seccionMontante/2,  H/2, -A/2 + seccionMontante/2],
+        [-L/2 + seccionMontante/2,  H/2, -A/2 + seccionMontante/2]
+    ].forEach(([x, y, z]) => {
+        const m = meshSombras(montGeo, matAce);
+        m.position.set(x, y, z);
+        grupo.add(m);
+    });
+
+    // Baldas: 5 niveles distribuidos uniformemente
+    const numBaldas = 5;
+    const baldaGeo = new THREE.BoxGeometry(L - 0.02, grosorBalda, A - 0.02);
+    for (let i = 0; i < numBaldas; i++) {
+        const t = i / (numBaldas - 1);
+        const y = grosorBalda / 2 + t * (H - grosorBalda);
+        const b = meshSombras(baldaGeo, matMad);
+        b.position.y = y;
+        grupo.add(b);
+    }
+    return grupo;
+}
+
+function construirMuebleBajo(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorBalda = 0.04;
+    const seccionMontante = 0.03;
+
+    // 4 montantes
+    const montGeo = new THREE.BoxGeometry(seccionMontante, H, seccionMontante);
+    [
+        [ L/2 - seccionMontante/2,  H/2,  A/2 - seccionMontante/2],
+        [-L/2 + seccionMontante/2,  H/2,  A/2 - seccionMontante/2],
+        [ L/2 - seccionMontante/2,  H/2, -A/2 + seccionMontante/2],
+        [-L/2 + seccionMontante/2,  H/2, -A/2 + seccionMontante/2]
+    ].forEach(([x, y, z]) => {
+        const m = meshSombras(montGeo, matAce);
+        m.position.set(x, y, z);
+        grupo.add(m);
+    });
+
+    // 3 baldas (suelo + media + tapa)
+    const baldaGeo = new THREE.BoxGeometry(L - 0.02, grosorBalda, A - 0.02);
+    [grosorBalda/2, H/2, H - grosorBalda/2].forEach(y => {
+        const b = meshSombras(baldaGeo, matMad);
+        b.position.y = y;
+        grupo.add(b);
+    });
+
+    // Pletina decorativa inferior frontal
+    const plet = meshSombras(new THREE.BoxGeometry(L - 0.02, 0.03, 0.006), matAce);
+    plet.position.set(0, 0.05, A/2);
+    grupo.add(plet);
+    return grupo;
+}
+
+function construirEstanteriaPared(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorBalda = 0.04;
+
+    // 3 baldas suspendidas, separación uniforme. H aquí marca alto total (incluye separaciones)
+    const numBaldas = 3;
+    const sep = H / (numBaldas);
+    const baldaGeo = new THREE.BoxGeometry(L, grosorBalda, A);
+    for (let i = 0; i < numBaldas; i++) {
+        const y = sep / 2 + i * sep;
+        const b = meshSombras(baldaGeo, matMad);
+        b.position.y = y;
+        grupo.add(b);
+
+        // Escuadras (2 por balda, en los extremos hacia atrás)
+        const escGeoH = new THREE.BoxGeometry(0.012, 0.04, A * 0.7);
+        const escGeoV = new THREE.BoxGeometry(0.012, 0.18, 0.04);
+        const offsets = [-(L/2) + 0.15, (L/2) - 0.15];
+        offsets.forEach(x => {
+            const eh = meshSombras(escGeoH, matAce);
+            eh.position.set(x, y - grosorBalda/2 - 0.02, -0.05);
+            grupo.add(eh);
+            const ev = meshSombras(escGeoV, matAce);
+            ev.position.set(x, y - grosorBalda/2 - 0.11, -A/2 + 0.02);
+            grupo.add(ev);
+        });
+    }
+    return grupo;
+}
+
+function construirMesitaCajon(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorTablero = 0.04;
+
+    // Tablero superior
+    const tab = meshSombras(new THREE.BoxGeometry(L, grosorTablero, A), matMad);
+    tab.position.y = H - grosorTablero / 2;
+    grupo.add(tab);
+
+    // Cajón central (frente y laterales en madera)
+    const cajonAlto = 0.13;
+    const cajonY = H - grosorTablero - cajonAlto/2 - 0.01;
+    const cajon = meshSombras(new THREE.BoxGeometry(L - 0.06, cajonAlto, A - 0.06), matMad);
+    cajon.position.y = cajonY;
+    grupo.add(cajon);
+
+    // Tirador
+    const tir = meshSombras(new THREE.CylinderGeometry(0.01, 0.01, 0.08, 12), matAce);
+    tir.rotation.z = Math.PI / 2;
+    tir.position.set(0, cajonY, A/2 - 0.025);
+    grupo.add(tir);
+
+    // 4 patas tubulares finas
+    const seccionPata = 0.025;
+    const alturaPata = H - grosorTablero;
+    const pataGeo = new THREE.BoxGeometry(seccionPata, alturaPata, seccionPata);
+    [
+        [ L/2 - seccionPata/2,  alturaPata/2,  A/2 - seccionPata/2],
+        [-L/2 + seccionPata/2,  alturaPata/2,  A/2 - seccionPata/2],
+        [ L/2 - seccionPata/2,  alturaPata/2, -A/2 + seccionPata/2],
+        [-L/2 + seccionPata/2,  alturaPata/2, -A/2 + seccionPata/2]
+    ].forEach(([x, y, z]) => {
+        const p = meshSombras(pataGeo, matAce);
+        p.position.set(x, y, z);
+        grupo.add(p);
+    });
+    return grupo;
+}
+
+function construirMesaCentro(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorTablero = 0.05;
+
+    // Tablero
+    const tab = meshSombras(new THREE.BoxGeometry(L, grosorTablero, A), matMad);
+    tab.position.y = H - grosorTablero / 2;
+    grupo.add(tab);
+
+    // Patas en U: 2 a izquierda y 2 a derecha unidas por una pletina horizontal abajo y subida vertical
+    const grosorPletina = 0.008;
+    const anchoPletina = 0.08;
+    const alturaPata = H - grosorTablero;
+
+    // Pletina vertical izquierda (lateral)
+    const lateralIzq = meshSombras(new THREE.BoxGeometry(grosorPletina, alturaPata, anchoPletina), matAce);
+    lateralIzq.position.set(-L/2 + 0.05, alturaPata/2, 0);
+    grupo.add(lateralIzq);
+    const lateralDer = meshSombras(new THREE.BoxGeometry(grosorPletina, alturaPata, anchoPletina), matAce);
+    lateralDer.position.set(L/2 - 0.05, alturaPata/2, 0);
+    grupo.add(lateralDer);
+
+    // Pies horizontales (apoyo en el suelo) en cada lateral
+    [(-L/2 + 0.05), (L/2 - 0.05)].forEach(x => {
+        const pie = meshSombras(new THREE.BoxGeometry(0.18, 0.015, anchoPletina), matAce);
+        pie.position.set(x, 0.0075, 0);
+        grupo.add(pie);
+    });
+    return grupo;
+}
+
+function construirMesaCentroRedonda(L, A, H, matMad, matAce) {
+    const grupo = new THREE.Group();
+    const grosorTablero = 0.04;
+    const radio = Math.max(L, A) / 2; // tomamos el mayor como diámetro
+
+    // Tablero circular
+    const tab = meshSombras(new THREE.CylinderGeometry(radio, radio, grosorTablero, 64), matMad);
+    tab.position.y = H - grosorTablero / 2;
+    grupo.add(tab);
+
+    // Trípode central: 3 patas inclinadas desde un nodo central
+    const alturaPata = H - grosorTablero;
+    const longPata = Math.sqrt(alturaPata * alturaPata + (radio * 0.55) * (radio * 0.55));
+    const pataGeo = new THREE.CylinderGeometry(0.018, 0.018, longPata, 16);
+    for (let i = 0; i < 3; i++) {
+        const ang = (i * 2 * Math.PI) / 3;
+        const px = Math.cos(ang) * radio * 0.55;
+        const pz = Math.sin(ang) * radio * 0.55;
+
+        const p = meshSombras(pataGeo, matAce);
+        p.position.set(px / 2, alturaPata / 2, pz / 2);
+        // Alinear el cilindro desde el centro superior (0, alturaPata, 0) al pie (px, 0, pz)
+        const dir = new THREE.Vector3(px, -alturaPata, pz).normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        const quat = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().multiplyScalar(-1));
+        p.quaternion.copy(quat);
+        // recalcular posición para que el extremo superior quede en el centro de la mesa
+        p.position.set(px / 2, alturaPata / 2, pz / 2);
+        grupo.add(p);
+    }
+
+    // Nodo central de unión bajo el tablero
+    const nodo = meshSombras(new THREE.CylinderGeometry(0.04, 0.04, 0.04, 16), matAce);
+    nodo.position.y = alturaPata - 0.02;
+    grupo.add(nodo);
+    return grupo;
+}
+
+const BUILDERS = {
+    'mesa':                   construirMesa,
+    'estanteria-pie':         construirEstanteriaPie,
+    'mueble-bajo':            construirMuebleBajo,
+    'estanteria-pared':       construirEstanteriaPared,
+    'mesita-cajon':           construirMesitaCajon,
+    'mesa-centro':            construirMesaCentro,
+    'mesa-centro-redonda':    construirMesaCentroRedonda
+};
+
+// -------- Reconstruir mueble --------
 function construirMueble() {
     if (state.grupoMueble) {
         scene.remove(state.grupoMueble);
@@ -229,79 +561,29 @@ function construirMueble() {
         });
     }
 
-    const grupo = new THREE.Group();
-
-    // Conversión cm → metros
     const L = state.largoCm / 100;
     const A = state.anchoCm / 100;
     const H = state.altoCm  / 100;
 
-    // Material madera
-    const matMad = COLORES_MADERA[state.madera] || COLORES_MADERA.roble;
-    const matMadera = new THREE.MeshStandardMaterial({
-        color: matMad.color,
-        roughness: matMad.rough,
-        metalness: 0.0
-    });
+    const matMad = getMatMadera();
+    const matAce = getMatAcero();
 
-    // Material acero
-    const matAce = COLORES_ACERO[state.acero] || COLORES_ACERO.negro;
-    const matAcero = new THREE.MeshStandardMaterial({
-        color: matAce.color,
-        roughness: matAce.rough,
-        metalness: matAce.metal
-    });
+    const tipo = state.tipo || 'mesa';
+    const builder = BUILDERS[tipo] || BUILDERS['mesa'];
+    const grupo = builder(L, A, H, matMad, matAce);
 
-    // Tablero superior (madera maciza, ~5 cm de grosor)
-    const grosorTablero = 0.05;
-    const tablero = new THREE.Mesh(
-        new THREE.BoxGeometry(L, grosorTablero, A),
-        matMadera
-    );
-    tablero.position.y = H - grosorTablero / 2;
-    tablero.castShadow = true;
-    tablero.receiveShadow = true;
-    grupo.add(tablero);
-
-    // Patas — tubo cuadrado 4×4 cm en las esquinas, retranqueadas 5 cm
-    const seccionPata = 0.04;
-    const retranqueo = 0.05;
-    const alturaPata = H - grosorTablero;
-    const pataGeo = new THREE.BoxGeometry(seccionPata, alturaPata, seccionPata);
-
-    const pos = [
-        [ L/2 - retranqueo - seccionPata/2,  alturaPata/2,  A/2 - retranqueo - seccionPata/2],
-        [-L/2 + retranqueo + seccionPata/2,  alturaPata/2,  A/2 - retranqueo - seccionPata/2],
-        [ L/2 - retranqueo - seccionPata/2,  alturaPata/2, -A/2 + retranqueo + seccionPata/2],
-        [-L/2 + retranqueo + seccionPata/2,  alturaPata/2, -A/2 + retranqueo + seccionPata/2]
-    ];
-    pos.forEach(([x, y, z]) => {
-        const p = new THREE.Mesh(pataGeo, matAcero);
-        p.position.set(x, y, z);
-        p.castShadow = true;
-        grupo.add(p);
-    });
-
-    // Tirante perimetral inferior (sólo si el mueble es ancho/largo)
-    if (L > 0.7 && A > 0.4) {
-        const alturaTirante = Math.max(0.02, alturaPata * 0.05);
-        const grosorTirante = 0.02;
-        const yTirante = 0.08; // a 8 cm del suelo
-
-        // Tirantes paralelos al largo
-        const tiranteLargoGeo = new THREE.BoxGeometry(L - 2 * (retranqueo + seccionPata), alturaTirante, grosorTirante);
-        const tA = new THREE.Mesh(tiranteLargoGeo, matAcero);
-        tA.position.set(0, yTirante, A/2 - retranqueo - seccionPata/2);
-        tA.castShadow = true;
-        grupo.add(tA);
-        const tB = new THREE.Mesh(tiranteLargoGeo, matAcero);
-        tB.position.set(0, yTirante, -A/2 + retranqueo + seccionPata/2);
-        tB.castShadow = true;
-        grupo.add(tB);
+    // Caso especial estantería de pared: la subimos a la altura de pared (1m)
+    if (tipo === 'estanteria-pared') {
+        grupo.position.y = 1.0;
     }
 
     state.grupoMueble = grupo;
     scene.add(grupo);
+
+    // Ajustar target de cámara según altura del mueble
+    const yTarget = (tipo === 'estanteria-pared') ? 1.4 : H * 0.55;
+    controls.target.set(0, yTarget, 0);
+    controls.update();
 }
 
 construirMueble();
@@ -348,5 +630,6 @@ function leerInputs() {
 // Inicializar con el modelo recibido por URL si existe
 if (window.__MODELO_INICIAL) {
     state.madera = window.__MODELO_INICIAL.madera || 'roble';
+    state.tipo = TIPO_POR_MODELO[window.__MODELO_INICIAL.id] || 'mesa';
     leerInputs();
 }
